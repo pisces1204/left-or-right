@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#111111" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="LEFT OR RIGHT" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="icon-180.png" />
+  <title>LEFT OR RIGHT</title>
+
+  <style>
+    * {
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background: #111;
+      color: #fff;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    body {
+      min-height: 100dvh;
+    }
+
+    .app {
+      width: 100%;
+      height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      padding:
+        max(18px, env(safe-area-inset-top))
+        18px
+        max(18px, env(safe-area-inset-bottom))
+        18px;
+    }
+
+    .top {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .title {
+      text-align: center;
+      font-size: 18px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+    }
+
+    .settings {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 8px;
+      font-size: 14px;
+      color: #bbb;
+      flex-wrap: wrap;
+    }
+
+    .settings label {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    input {
+      width: 68px;
+      padding: 9px 8px;
+      border: 1px solid #444;
+      border-radius: 10px;
+      background: #202020;
+      color: #fff;
+      font-size: 16px;
+      text-align: center;
+      outline: none;
+    }
+
+    .game-area {
+      flex: 1;
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .arrow {
+      font-size: min(48vw, 260px);
+      line-height: 1;
+      font-weight: 900;
+      opacity: 0;
+      transform: scale(0.75);
+      transition: opacity 0.07s ease, transform 0.07s ease;
+    }
+
+    .arrow.show {
+      opacity: 1;
+      transform: scale(1);
+    }
+
+    .message {
+      position: absolute;
+      text-align: center;
+      color: #aaa;
+      font-size: 18px;
+      line-height: 1.6;
+    }
+
+    .countdown {
+      position: absolute;
+      font-size: min(34vw, 180px);
+      font-weight: 900;
+      opacity: 0;
+    }
+
+    .countdown.show {
+      opacity: 1;
+    }
+
+    .bottom {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    button {
+      min-height: 58px;
+      border: 0;
+      border-radius: 16px;
+      font-size: 18px;
+      font-weight: 800;
+    }
+
+    #startBtn {
+      background: #fff;
+      color: #111;
+    }
+
+    #stopBtn {
+      background: #2b2b2b;
+      color: #fff;
+    }
+
+    button:active {
+      transform: scale(0.98);
+    }
+
+    .running .top {
+      opacity: 0.35;
+    }
+
+    .running input {
+      pointer-events: none;
+    }
+
+    @media (orientation: landscape) {
+      .arrow {
+        font-size: min(34vh, 220px);
+      }
+
+      .countdown {
+        font-size: min(27vh, 170px);
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <main class="app" id="app">
+    <div class="top">
+      <div class="title">LEFT OR RIGHT</div>
+
+      <div class="settings">
+        <label>
+          최소
+          <input id="minIntervalInput"
+                 type="number"
+                 min="0.3"
+                 max="60"
+                 step="0.1"
+                 value="1.0"
+                 inputmode="decimal" />
+        </label>
+
+        <span>~</span>
+
+        <label>
+          최대
+          <input id="maxIntervalInput"
+                 type="number"
+                 min="0.3"
+                 max="60"
+                 step="0.1"
+                 value="5.0"
+                 inputmode="decimal" />
+        </label>
+
+        <span>초</span>
+      </div>
+    </div>
+
+    <section class="game-area">
+      <div class="message" id="message">
+        랜덤 간격을 설정하고<br />
+        START를 눌러주세요.
+      </div>
+
+      <div class="countdown" id="countdown"></div>
+      <div class="arrow" id="arrow"></div>
+    </section>
+
+    <div class="bottom">
+      <button id="startBtn" type="button">START</button>
+      <button id="stopBtn" type="button">STOP</button>
+    </div>
+  </main>
+
+  <script>
+    (function () {
+      "use strict";
+
+      var app = document.getElementById("app");
+      var arrow = document.getElementById("arrow");
+      var message = document.getElementById("message");
+      var countdown = document.getElementById("countdown");
+      var minIntervalInput = document.getElementById("minIntervalInput");
+      var maxIntervalInput = document.getElementById("maxIntervalInput");
+      var startBtn = document.getElementById("startBtn");
+      var stopBtn = document.getElementById("stopBtn");
+
+      var gameTimer = null;
+      var countdownTimer = null;
+      var running = false;
+
+      function clearTimers() {
+        if (gameTimer !== null) {
+          clearTimeout(gameTimer);
+          gameTimer = null;
+        }
+
+        if (countdownTimer !== null) {
+          clearInterval(countdownTimer);
+          countdownTimer = null;
+        }
+      }
+
+      function hideArrow() {
+        arrow.classList.remove("show");
+        arrow.textContent = "";
+      }
+
+      function getRandomDelayMs() {
+        var minSeconds = parseFloat(minIntervalInput.value);
+        var maxSeconds = parseFloat(maxIntervalInput.value);
+
+        if (isNaN(minSeconds) || minSeconds < 0.3) {
+          minSeconds = 0.3;
+          minIntervalInput.value = "0.3";
+        }
+
+        if (isNaN(maxSeconds) || maxSeconds < 0.3) {
+          maxSeconds = 0.3;
+          maxIntervalInput.value = "0.3";
+        }
+
+        if (minSeconds > 60) {
+          minSeconds = 60;
+          minIntervalInput.value = "60";
+        }
+
+        if (maxSeconds > 60) {
+          maxSeconds = 60;
+          maxIntervalInput.value = "60";
+        }
+
+        if (minSeconds > maxSeconds) {
+          var temp = minSeconds;
+          minSeconds = maxSeconds;
+          maxSeconds = temp;
+
+          minIntervalInput.value = minSeconds.toFixed(1);
+          maxIntervalInput.value = maxSeconds.toFixed(1);
+        }
+
+        return (minSeconds + Math.random() * (maxSeconds - minSeconds)) * 1000;
+      }
+
+      function showRandomArrow() {
+        var isLeft = Math.random() < 0.5;
+        arrow.textContent = isLeft ? "←" : "→";
+        arrow.classList.add("show");
+
+        // 화살표가 너무 오래 남아 타이밍을 흐리지 않도록 잠시 후 숨김
+        window.setTimeout(function () {
+          if (running) {
+            hideArrow();
+          }
+        }, 650);
+      }
+
+      function scheduleNextArrow() {
+        if (!running) {
+          return;
+        }
+
+        gameTimer = setTimeout(function () {
+          if (!running) {
+            return;
+          }
+
+          showRandomArrow();
+          scheduleNextArrow();
+        }, getRandomDelayMs());
+      }
+
+      function startGameLoop() {
+        running = true;
+        app.classList.add("running");
+        message.style.display = "none";
+        countdown.classList.remove("show");
+        countdown.textContent = "";
+
+        scheduleNextArrow();
+      }
+
+      function startGame() {
+        if (running) {
+          return;
+        }
+
+        clearTimers();
+        hideArrow();
+
+        message.style.display = "none";
+        countdown.classList.add("show");
+
+        var count = 3;
+        countdown.textContent = count;
+
+        countdownTimer = setInterval(function () {
+          count -= 1;
+
+          if (count > 0) {
+            countdown.textContent = count;
+            return;
+          }
+
+          clearInterval(countdownTimer);
+          countdownTimer = null;
+
+          countdown.textContent = "GO!";
+
+          window.setTimeout(function () {
+            startGameLoop();
+          }, 350);
+        }, 700);
+      }
+
+      function stopGame() {
+        clearTimers();
+        running = false;
+        app.classList.remove("running");
+        hideArrow();
+
+        countdown.classList.remove("show");
+        countdown.textContent = "";
+
+        message.style.display = "block";
+        message.innerHTML = "STOP<br>START를 누르면 다시 시작합니다.";
+      }
+
+      startBtn.addEventListener("click", startGame);
+      stopBtn.addEventListener("click", stopGame);
+
+      document.addEventListener("visibilitychange", function () {
+        if (document.hidden && running) {
+          stopGame();
+        }
+      });
+
+      // PWA 오프라인 캐시 등록
+      if ("serviceWorker" in navigator) {
+        window.addEventListener("load", function () {
+          navigator.serviceWorker.register("./sw.js").catch(function () {
+            // 서비스워커 등록 실패는 게임 실행 자체에는 영향을 주지 않는다.
+          });
+        });
+      }
+    })();
+  </script>
+</body>
+</html>
